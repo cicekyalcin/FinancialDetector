@@ -1,3 +1,5 @@
+using System;
+using System.Text;
 using FinancialDetector.Domain.Interfaces;
 using FinancialDetector.Infrastructure.Data;
 using FinancialDetector.Infrastructure.Services;
@@ -7,15 +9,23 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.OpenApi;
 using Microsoft.OpenApi.Models;
-using System;
-using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
+
+// GÜVENLÝK: CORS Politikasý (Sadece belirlediðimiz Frontend'lerin API'ye eriþmesine izin verir)
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy.WithOrigins("http://127.0.0.1:5500", "http://localhost:5500") // Standart HTML Canlý Sunucu portlarý
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
 
 // Swagger JWT Güvenlik Konfigürasyonu
 builder.Services.AddSwaggerGen(c =>
@@ -24,7 +34,7 @@ builder.Services.AddSwaggerGen(c =>
 
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "Lütfen JWT Token'ýnýzý buraya yapýþtýrýn. (Baþýna 'Bearer ' kelimesini ve bir boþluk koymayý unutmayýn. Örnek: 'Bearer eyJhbGci...')",
+        Description = "Lütfen JWT Token'ýnýzý buraya yapýþtýrýn. (Baþýna 'Bearer ' kelimesini ve bir boþluk koymayý unutmayýn.)",
         Name = "Authorization",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.ApiKey,
@@ -51,7 +61,7 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Baðýmlýlýk Enjeksiyonu (IoC Container) Kayýtlarý
+// Baðýmlýlýk Enjeksiyonu
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 builder.Services.AddScoped<ITransactionAnalyzerService, TransactionAnalyzerService>();
 
@@ -86,16 +96,18 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "Financial Detector API v1");
-        c.RoutePrefix = string.Empty; // GÜVENLÝK VE OTOMASYON: Swagger'ý doðrudan localhost:7213 kök dizinine kilitler.
+        c.RoutePrefix = string.Empty;
     });
 }
 
 app.UseHttpsRedirection();
 
-// GÜVENLÝK: Authentication (Kimlik Doðrulama) daima Authorization'dan (Yetkilendirme) önce gelmelidir!
+// CORS Politikasý mutlaka Authentication'dan ÖNCE çaðrýlmalýdýr!
+app.UseCors("AllowFrontend");
+
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
-app.Run();
+app.Run(); 

@@ -1,18 +1,11 @@
 ﻿using FinancialDetector.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
-using System;
 
 namespace FinancialDetector.Infrastructure.Data
 {
     public class AppDbContext : DbContext
     {
-        private readonly Guid _currentUserId;
-
-        public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
-        {
-            // API katmanında token üzerinden inject edilecek, şimdilik varsayılan boş.
-            _currentUserId = Guid.Empty;
-        }
+        public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
         public DbSet<User> Users { get; set; }
         public DbSet<Transaction> Transactions { get; set; }
@@ -22,24 +15,23 @@ namespace FinancialDetector.Infrastructure.Data
         {
             base.OnModelCreating(modelBuilder);
 
-            modelBuilder.Entity<User>().ToTable("Users");
-            modelBuilder.Entity<Transaction>().ToTable("Transactions");
-            modelBuilder.Entity<Subscription>().ToTable("Subscriptions");
+            // GÜVENLİK: E-posta adreslerinin benzersiz (Unique) olmasını veritabanı çekirdeğinde mühürlüyoruz.
+            modelBuilder.Entity<User>()
+                .HasIndex(u => u.Email)
+                .IsUnique();
 
+            // VERİ BÜTÜNLÜĞÜ (Cascade Delete): Kullanıcı silinirse, ona ait işlemler ve sızıntı raporları otomatik silinir.
             modelBuilder.Entity<Transaction>()
-                .Property(t => t.Amount)
-                .HasColumnType("decimal(18,2)");
+                .HasOne<User>()
+                .WithMany()
+                .HasForeignKey(t => t.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<Subscription>()
-                .Property(s => s.LastDetectedAmount)
-                .HasColumnType("decimal(18,2)");
-
-            // Multi-Tenancy (Çok Kiracılı) Veri İzolasyonu Global Filtresi
-            if (_currentUserId != Guid.Empty)
-            {
-                modelBuilder.Entity<Transaction>().HasQueryFilter(t => t.UserId == _currentUserId);
-                modelBuilder.Entity<Subscription>().HasQueryFilter(s => s.UserId == _currentUserId);
-            }
+                .HasOne<User>()
+                .WithMany()
+                .HasForeignKey(s => s.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         }
     }
 }
