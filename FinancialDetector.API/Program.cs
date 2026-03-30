@@ -1,20 +1,22 @@
+using FinancialDetector.Domain.Interfaces;
 using FinancialDetector.Infrastructure.Data;
+using FinancialDetector.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// API Controller servislerini ekliyoruz
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Veritabanı (AppDbContext) servisini sisteme kaydediyoruz
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// Analiz servisinin Sisteme (IoC Container) kaydedilmesi
+builder.Services.AddScoped<ITransactionAnalyzerService, TransactionAnalyzerService>();
+
 var app = builder.Build();
 
-// HTTP Request Pipeline yapılandırması
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
