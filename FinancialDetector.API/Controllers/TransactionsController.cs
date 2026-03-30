@@ -13,7 +13,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FinancialDetector.API.Controllers
 {
-    // [Authorize] etiketi sayesinde bu uç noktalara sadece geçerli bir JWT Token'ı olanlar erişebilir.
+    // [Authorize] etiketi, bu sınıftaki tüm uç noktalara sadece geçerli bir JWT'si olanların girmesini zorunlu kılar.
     [Authorize]
     [Route("api/[controller]")]
     [ApiController]
@@ -37,7 +37,7 @@ namespace FinancialDetector.API.Controllers
             }
 
             // GÜVENLİK: Kullanıcının ID'sini asla dışarıdan parametre olarak almıyoruz.
-            // Token'ın içindeki kriptografik imzadan çözüyoruz.
+            // Sistemi kandıramamaları için ID'yi doğrudan şifreli JWT Token'ın içinden çekiyoruz.
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out Guid userId))
             {
@@ -53,11 +53,11 @@ namespace FinancialDetector.API.Controllers
                     Id = Guid.NewGuid(),
                     UserId = userId,
                     TransactionDate = dto.TransactionDate,
-                    RawMerchantName = dto.MerchantName, // Örn: IYZICO *NETFLIX
+                    RawMerchantName = dto.MerchantName,
                     Amount = dto.Amount,
                     Currency = dto.Currency,
                     IsProcessedForSubscription = false,
-                    NormalizedMerchantName = string.Empty // Algoritma servisi çalışınca dolacak
+                    NormalizedMerchantName = string.Empty
                 });
             }
 
@@ -73,13 +73,15 @@ namespace FinancialDetector.API.Controllers
         [HttpGet("leaks")]
         public async Task<IActionResult> GetDetectedLeaks()
         {
+            // Yine kimliği güvenli bir şekilde token içinden çekiyoruz.
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out Guid userId))
             {
                 return Unauthorized("Geçersiz kullanıcı kimliği.");
             }
 
-            // Sadece algoritmanın sızıntı tespit ettiği (HasLeakDetected == true) kayıtları getiriyoruz.
+            // Global Query Filter ile zaten sadece bu kullanıcının verileri gelir, 
+            // ama çift katmanlı güvenlik için (Defense in Depth) UserId'yi burada da sorguluyoruz.
             var leaks = await _context.Subscriptions
                 .Where(s => s.UserId == userId && s.HasLeakDetected)
                 .OrderByDescending(s => s.LastPaymentDate)
