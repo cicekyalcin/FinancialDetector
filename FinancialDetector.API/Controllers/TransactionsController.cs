@@ -12,12 +12,24 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FinancialDetector.API.Controllers
 {
+    // 1. DTO: Veri yükleme işlemleri için nesnemiz
     public class TransactionUploadDto
     {
         public DateTime TransactionDate { get; set; }
         public string MerchantName { get; set; }
         public decimal Amount { get; set; }
         public string Currency { get; set; }
+    }
+
+    // 2. YENİ DTO: Arama, Filtreleme ve Sayfalama kriterlerini tutan kurumsal nesnemiz
+    public class TransactionFilterDto
+    {
+        public int PageNumber { get; set; } = 1;
+        public int PageSize { get; set; } = 10;
+        public DateTime? StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+        public int? Month { get; set; }
+        public string? MerchantName { get; set; }
     }
 
     [Authorize]
@@ -34,29 +46,53 @@ namespace FinancialDetector.API.Controllers
             _analyzerService = analyzerService;
         }
 
-        // YENİ EKLENEN MİMARİ: Sayfalamalı Listeleme (Pagination)
         [HttpGet]
-        public async Task<IActionResult> GetTransactions([FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 10)
+        public async Task<IActionResult> GetTransactions([FromQuery] TransactionFilterDto filter)
         {
+            // GÜVENLİK ADIMI 1: Kimlik Doğrulama
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
             {
                 return Unauthorized("Geçersiz oturum. Lütfen tekrar giriş yapın.");
             }
 
-            // Güvenlik: Sadece giriş yapan kullanıcının verilerini çek ve tarihe göre en yeniden eskiye sırala.
-            var query = _context.Transactions
-                .Where(t => t.UserId == userId)
-                .OrderByDescending(t => t.TransactionDate);
+            // GÜVENLİK ADIMI 2: Veri İzolasyonu. Sorguyu SADECE bu kullanıcıya ait verilerle başlat.
+            var query = _context.Transactions.Where(t => t.UserId == userId).AsQueryable();
 
-            // Matematik: Toplam kayıt ve sayfa sayısını hesapla
+            // MİMARİ ADIM: Dinamik Filtreleme İnşası (Deferred Execution)
+            if (filter.StartDate.HasValue)
+            {
+                query = query.Where(t => t.TransactionDate >= filter.StartDate.Value);
+            }
+
+            if (filter.EndDate.HasValue)
+            {
+                query = query.Where(t => t.TransactionDate <= filter.EndDate.Value);
+            }
+
+            if (filter.Month.HasValue && filter.Month.Value >= 1 && filter.Month.Value <= 12)
+            {
+                // Belirli bir aydaki (Örn: Sadece Mart) harcamaları getir.
+                query = query.Where(t => t.TransactionDate.Month == filter.Month.Value);
+            }
+
+            if (!string.IsNullOrWhiteSpace(filter.MerchantName))
+            {
+                // Kurum adına göre arama (Büyük/küçük harf duyarsız arama için veritabanındaki normalize alanı kullanıyoruz)
+                query = query.Where(t => t.NormalizedMerchantName.Contains(filter.MerchantName.ToUpper()));
+            }
+
+            // Sıralama (En yeniden en eskiye)
+            query = query.OrderByDescending(t => t.TransactionDate);
+
+            // Sayfalama Matematiği
             var totalRecords = await query.CountAsync();
-            var totalPages = (int)Math.Ceiling(totalRecords / (double)pageSize);
+            var totalPages = (int)Math.Ceiling(totalRecords / (double)filter.PageSize);
 
-            // Veriyi sayfalayarak çek (Sadece istenen sayfanın verisi RAM'e alınır)
+            // VERİTABANINA VURMA ANI (SQL Server sadece bu satırda çalışır ve filtrelenmiş paket veriyi getirir)
             var transactions = await query
-                .Skip((pageNumber - 1) * pageSize)
-                .Take(pageSize)
+                .Skip((filter.PageNumber - 1) * filter.PageSize)
+                .Take(filter.PageSize)
                 .Select(t => new
                 {
                     t.Id,
@@ -72,8 +108,8 @@ namespace FinancialDetector.API.Controllers
             {
                 TotalRecords = totalRecords,
                 TotalPages = totalPages,
-                CurrentPage = pageNumber,
-                PageSize = pageSize,
+                CurrentPage = filter.PageNumber,
+                PageSize = filter.PageSize,
                 Data = transactions
             });
         }
