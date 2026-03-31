@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Transactions;
 
 namespace FinancialDetector.Domain.Entities
 {
