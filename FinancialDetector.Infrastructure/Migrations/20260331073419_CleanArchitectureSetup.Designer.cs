@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace FinancialDetector.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260330164115_FixShadowPropertyBug")]
-    partial class FixShadowPropertyBug
+    [Migration("20260331073419_CleanArchitectureSetup")]
+    partial class CleanArchitectureSetup
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -64,14 +64,9 @@ namespace FinancialDetector.Infrastructure.Migrations
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid>("UserId1")
-                        .HasColumnType("uniqueidentifier");
-
                     b.HasKey("Id");
 
                     b.HasIndex("UserId");
-
-                    b.HasIndex("UserId1");
 
                     b.ToTable("Subscriptions");
                 });
@@ -106,14 +101,9 @@ namespace FinancialDetector.Infrastructure.Migrations
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid>("UserId1")
-                        .HasColumnType("uniqueidentifier");
-
                     b.HasKey("Id");
 
                     b.HasIndex("UserId");
-
-                    b.HasIndex("UserId1");
 
                     b.ToTable("Transactions");
                 });
@@ -152,16 +142,10 @@ namespace FinancialDetector.Infrastructure.Migrations
 
             modelBuilder.Entity("FinancialDetector.Domain.Entities.Subscription", b =>
                 {
-                    b.HasOne("FinancialDetector.Domain.Entities.User", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
                     b.HasOne("FinancialDetector.Domain.Entities.User", "User")
                         .WithMany("Subscriptions")
-                        .HasForeignKey("UserId1")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.Navigation("User");
@@ -169,16 +153,10 @@ namespace FinancialDetector.Infrastructure.Migrations
 
             modelBuilder.Entity("FinancialDetector.Domain.Entities.Transaction", b =>
                 {
-                    b.HasOne("FinancialDetector.Domain.Entities.User", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
                     b.HasOne("FinancialDetector.Domain.Entities.User", "User")
                         .WithMany("Transactions")
-                        .HasForeignKey("UserId1")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.Navigation("User");

@@ -8,10 +8,10 @@ using FinancialDetector.Domain.Interfaces;
 using FinancialDetector.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore; // Fiziksel SQL kontrolü (AnyAsync) için eklendi.
 
 namespace FinancialDetector.API.Controllers
 {
-    // 1. DTO: Swagger'dan gelen saf JSON'ı 400 hatasına düşmeden karşılamak için kalkanımız.
     public class TransactionUploadDto
     {
         public DateTime TransactionDate { get; set; }
@@ -48,16 +48,23 @@ namespace FinancialDetector.API.Controllers
                 return Unauthorized("Geçersiz oturum. Lütfen tekrar giriş yapın.");
             }
 
-            // 2. KÖKLÜ ÇÖZÜM: DTO'yu, senin zorunlu alanları olan veritabanı Entity'sine dönüştürüyoruz.
+            // KRİTİK GÜVENLİK DUVARI: Token geçerli olsa bile kullanıcı SQL'de fiziksel olarak var mı?
+            var userExists = await _context.Users.AnyAsync(u => u.Id == userId);
+            if (!userExists)
+            {
+                return Unauthorized("Token onaylandı ancak bu kimliğe sahip bir kullanıcı SQL veritabanında yok! (Muhtemelen veritabanını sıfırladınız). Lütfen önce /api/Auth/register ile yeniden kayıt olun, ardından /login ile yeni token alıp tekrar deneyin.");
+            }
+
+            // GÜVENLİK 2: EF Core'un rastgele ID atamasında kafasının karışmasını önlemek için Guid.NewGuid() ile biz mühürlüyoruz.
             var newTransactions = uploadData.Select(dto => new Transaction
             {
-                Id = Guid.Empty,
+                Id = Guid.NewGuid(),
                 UserId = userId,
                 TransactionDate = dto.TransactionDate,
                 Amount = dto.Amount,
                 Currency = dto.Currency,
                 RawMerchantName = dto.MerchantName,
-                NormalizedMerchantName = dto.MerchantName.ToUpper() // Boş kalmaması için otomatik dolduruyoruz
+                NormalizedMerchantName = dto.MerchantName.ToUpper()
             }).ToList();
 
             await _context.Transactions.AddRangeAsync(newTransactions);
@@ -66,18 +73,15 @@ namespace FinancialDetector.API.Controllers
             return Ok(new { Message = $"{newTransactions.Count} işlem başarıyla veritabanına kaydedildi." });
         }
 
-        // 3. KAYBOLAN METOD: Sızıntı analizini ekrana getiren uç noktamız geri geldi.
         [HttpGet("leaks")]
         public async Task<IActionResult> GetLeaks()
         {
-            var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
             {
                 return Unauthorized("Geçersiz oturum. Lütfen tekrar giriş yapın.");
             }
 
-            // KRİTİK DÜZELTME: Metodu çağırırken (Guid userId) değil, sadece (userId) yazıyoruz.
-            // Ayrıca metodun adını Interface'de belirlediğimiz orijinal 'AnalyzeUserTransactions' ile eşitledik.
             var result = await _analyzerService.AnalyzeUserTransactions(userId);
 
             return Ok(result);
