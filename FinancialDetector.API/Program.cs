@@ -21,7 +21,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://127.0.0.1:5500", "http://localhost:5500") // Standart HTML Canlý Sunucu portlarý
+        policy.WithOrigins("http://127.0.0.1:5500", "http://localhost:5500")
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
@@ -102,7 +102,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-// CORS Politikasý mutlaka Authentication'dan ÖNCE çaðrýlmalýdýr!
+// GÜVENLÝK KURALI: CORS Politikasý mutlaka Authentication'dan ÖNCE çaðrýlmalýdýr!
 app.UseCors("AllowFrontend");
 
 app.UseAuthentication();
@@ -110,4 +110,4 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-app.Run(); 
+app.Run();

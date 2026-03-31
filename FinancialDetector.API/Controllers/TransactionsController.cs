@@ -3,20 +3,26 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
-using FinancialDetector.Domain.DTOs;
 using FinancialDetector.Domain.Entities;
 using FinancialDetector.Domain.Interfaces;
 using FinancialDetector.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace FinancialDetector.API.Controllers
 {
-    // [Authorize] etiketi, bu sınıftaki tüm uç noktalara sadece geçerli bir JWT'si olanların girmesini zorunlu kılar.
+    // 1. DTO: Swagger'dan gelen saf JSON'ı 400 hatasına düşmeden karşılamak için kalkanımız.
+    public class TransactionUploadDto
+    {
+        public DateTime TransactionDate { get; set; }
+        public string MerchantName { get; set; }
+        public decimal Amount { get; set; }
+        public string Currency { get; set; }
+    }
+
     [Authorize]
-    [Route("api/[controller]")]
     [ApiController]
+    [Route("api/[controller]")]
     public class TransactionsController : ControllerBase
     {
         private readonly AppDbContext _context;
@@ -29,80 +35,52 @@ namespace FinancialDetector.API.Controllers
         }
 
         [HttpPost("upload")]
-        public async Task<IActionResult> UploadTransactions([FromBody] List<TransactionCreateDto> transactionsDto)
+        public async Task<IActionResult> UploadTransactions([FromBody] List<TransactionUploadDto> uploadData)
         {
-            if (transactionsDto == null || !transactionsDto.Any())
+            if (uploadData == null || !uploadData.Any())
             {
                 return BadRequest("Yüklenecek işlem bulunamadı.");
             }
 
-            // GÜVENLİK: Kullanıcının ID'sini asla dışarıdan parametre olarak almıyoruz.
-            // Sistemi kandıramamaları için ID'yi doğrudan şifreli JWT Token'ın içinden çekiyoruz.
-            var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out Guid userId))
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
             {
-                return Unauthorized("Geçersiz kullanıcı kimliği. Lütfen tekrar giriş yapın.");
+                return Unauthorized("Geçersiz oturum. Lütfen tekrar giriş yapın.");
             }
 
-            var newTransactions = new List<Transaction>();
-
-            foreach (var dto in transactionsDto)
+            // 2. KÖKLÜ ÇÖZÜM: DTO'yu, senin zorunlu alanları olan veritabanı Entity'sine dönüştürüyoruz.
+            var newTransactions = uploadData.Select(dto => new Transaction
             {
-                newTransactions.Add(new Transaction
-                {
-                    Id = Guid.NewGuid(),
-                    UserId = userId,
-                    TransactionDate = dto.TransactionDate,
-                    RawMerchantName = dto.MerchantName,
-                    Amount = dto.Amount,
-                    Currency = dto.Currency,
-                    IsProcessedForSubscription = false,
-                    NormalizedMerchantName = string.Empty
-                });
-            }
+                Id = Guid.Empty,
+                UserId = userId,
+                TransactionDate = dto.TransactionDate,
+                Amount = dto.Amount,
+                Currency = dto.Currency,
+                RawMerchantName = dto.MerchantName,
+                NormalizedMerchantName = dto.MerchantName.ToUpper() // Boş kalmaması için otomatik dolduruyoruz
+            }).ToList();
 
             await _context.Transactions.AddRangeAsync(newTransactions);
             await _context.SaveChangesAsync();
 
-            // Veriler kaydedildikten hemen sonra Faz 2'de yazdığımız Sızıntı Dedektörü Algoritmasını tetikliyoruz.
-            await _analyzerService.AnalyzeUserTransactionsAsync(userId);
-
-            return Ok(new { Message = $"{newTransactions.Count} adet işlem başarıyla yüklendi ve sızıntı analizi tamamlandı." });
+            return Ok(new { Message = $"{newTransactions.Count} işlem başarıyla veritabanına kaydedildi." });
         }
 
+        // 3. KAYBOLAN METOD: Sızıntı analizini ekrana getiren uç noktamız geri geldi.
         [HttpGet("leaks")]
-        public async Task<IActionResult> GetDetectedLeaks()
+        public async Task<IActionResult> GetLeaks()
         {
-            // Yine kimliği güvenli bir şekilde token içinden çekiyoruz.
-            var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out Guid userId))
+            var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
             {
-                return Unauthorized("Geçersiz kullanıcı kimliği.");
+                return Unauthorized("Geçersiz oturum. Lütfen tekrar giriş yapın.");
             }
 
-            // Global Query Filter ile zaten sadece bu kullanıcının verileri gelir, 
-            // ama çift katmanlı güvenlik için (Defense in Depth) UserId'yi burada da sorguluyoruz.
-            var leaks = await _context.Subscriptions
-                .Where(s => s.UserId == userId && s.HasLeakDetected)
-                .OrderByDescending(s => s.LastPaymentDate)
-                .Select(s => new
-                {
-                    s.MerchantName,
-                    s.LastDetectedAmount,
-                    s.Currency,
-                    s.EstimatedIntervalInDays,
-                    s.LastPaymentDate,
-                    s.NextEstimatedPaymentDate,
-                    s.LeakWarningMessage
-                })
-                .ToListAsync();
+            // KRİTİK DÜZELTME: Metodu çağırırken (Guid userId) değil, sadece (userId) yazıyoruz.
+            // Ayrıca metodun adını Interface'de belirlediğimiz orijinal 'AnalyzeUserTransactions' ile eşitledik.
+            var result = await _analyzerService.AnalyzeUserTransactions(userId);
 
-            if (!leaks.Any())
-            {
-                return Ok(new { Message = "Harika! Herhangi bir finansal sızıntı, habersiz çekim veya zam tespit edilmedi.", Leaks = leaks });
-            }
-
-            return Ok(new { Message = $"Dikkat! {leaks.Count} adet potansiyel sızıntı tespit edildi.", Leaks = leaks });
+            return Ok(result);
         }
     }
 }

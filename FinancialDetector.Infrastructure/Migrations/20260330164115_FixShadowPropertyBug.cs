@@ -6,11 +6,19 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace FinancialDetector.Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class SecurityAuditPatch : Migration
+    public partial class FixShadowPropertyBug : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropForeignKey(
+                name: "FK_Subscriptions_Users_UserId",
+                table: "Subscriptions");
+
+            migrationBuilder.DropForeignKey(
+                name: "FK_Transactions_Users_UserId",
+                table: "Transactions");
+
             migrationBuilder.AlterColumn<string>(
                 name: "Email",
                 table: "Users",
@@ -50,12 +58,26 @@ namespace FinancialDetector.Infrastructure.Migrations
                 column: "UserId1");
 
             migrationBuilder.AddForeignKey(
+                name: "FK_Subscriptions_Users_UserId",
+                table: "Subscriptions",
+                column: "UserId",
+                principalTable: "Users",
+                principalColumn: "Id");
+
+            migrationBuilder.AddForeignKey(
                 name: "FK_Subscriptions_Users_UserId1",
                 table: "Subscriptions",
                 column: "UserId1",
                 principalTable: "Users",
                 principalColumn: "Id",
                 onDelete: ReferentialAction.Cascade);
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_Transactions_Users_UserId",
+                table: "Transactions",
+                column: "UserId",
+                principalTable: "Users",
+                principalColumn: "Id");
 
             migrationBuilder.AddForeignKey(
                 name: "FK_Transactions_Users_UserId1",
@@ -70,8 +92,16 @@ namespace FinancialDetector.Infrastructure.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropForeignKey(
+                name: "FK_Subscriptions_Users_UserId",
+                table: "Subscriptions");
+
+            migrationBuilder.DropForeignKey(
                 name: "FK_Subscriptions_Users_UserId1",
                 table: "Subscriptions");
+
+            migrationBuilder.DropForeignKey(
+                name: "FK_Transactions_Users_UserId",
+                table: "Transactions");
 
             migrationBuilder.DropForeignKey(
                 name: "FK_Transactions_Users_UserId1",
@@ -104,6 +134,22 @@ namespace FinancialDetector.Infrastructure.Migrations
                 nullable: false,
                 oldClrType: typeof(string),
                 oldType: "nvarchar(450)");
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_Subscriptions_Users_UserId",
+                table: "Subscriptions",
+                column: "UserId",
+                principalTable: "Users",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.Cascade);
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_Transactions_Users_UserId",
+                table: "Transactions",
+                column: "UserId",
+                principalTable: "Users",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.Cascade);
         }
     }
 }

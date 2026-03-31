@@ -1,4 +1,5 @@
-﻿using FinancialDetector.Domain.Entities;
+﻿using System.Linq;
+using FinancialDetector.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace FinancialDetector.Infrastructure.Data
@@ -15,23 +16,24 @@ namespace FinancialDetector.Infrastructure.Data
         {
             base.OnModelCreating(modelBuilder);
 
-            // GÜVENLİK: E-posta adreslerinin benzersiz (Unique) olmasını veritabanı çekirdeğinde mühürlüyoruz.
+            // GÜVENLİK: E-posta adreslerinin benzersiz (Unique) olmasını mühürlüyoruz.
             modelBuilder.Entity<User>()
                 .HasIndex(u => u.Email)
                 .IsUnique();
 
-            // VERİ BÜTÜNLÜĞÜ (Cascade Delete): Kullanıcı silinirse, ona ait işlemler ve sızıntı raporları otomatik silinir.
+            // MİMARİ DÜZELTME: EF Core'un 'UserId1' gibi gizli (Shadow) kolonlar yaratmasını,
+            // ilişkileri açıkça belirterek ve Cascade silmeyi kapatarak engelliyoruz.
             modelBuilder.Entity<Transaction>()
                 .HasOne<User>()
                 .WithMany()
                 .HasForeignKey(t => t.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.NoAction);
 
             modelBuilder.Entity<Subscription>()
                 .HasOne<User>()
                 .WithMany()
                 .HasForeignKey(s => s.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.NoAction);
         }
     }
 }

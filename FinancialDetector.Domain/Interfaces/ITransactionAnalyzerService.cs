@@ -5,6 +5,6 @@ namespace FinancialDetector.Domain.Interfaces
 {
     public interface ITransactionAnalyzerService
     {
-        Task AnalyzeUserTransactionsAsync(Guid userId);
+        Task<object> AnalyzeUserTransactions(Guid userId);
     }
 }

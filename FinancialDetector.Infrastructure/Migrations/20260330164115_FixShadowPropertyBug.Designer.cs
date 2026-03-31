@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace FinancialDetector.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260330140858_SecurityAuditPatch")]
-    partial class SecurityAuditPatch
+    [Migration("20260330164115_FixShadowPropertyBug")]
+    partial class FixShadowPropertyBug
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -155,7 +155,7 @@ namespace FinancialDetector.Infrastructure.Migrations
                     b.HasOne("FinancialDetector.Domain.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.HasOne("FinancialDetector.Domain.Entities.User", "User")
@@ -172,7 +172,7 @@ namespace FinancialDetector.Infrastructure.Migrations
                     b.HasOne("FinancialDetector.Domain.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.HasOne("FinancialDetector.Domain.Entities.User", "User")

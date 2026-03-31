@@ -152,7 +152,7 @@ namespace FinancialDetector.Infrastructure.Migrations
                     b.HasOne("FinancialDetector.Domain.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.HasOne("FinancialDetector.Domain.Entities.User", "User")
@@ -169,7 +169,7 @@ namespace FinancialDetector.Infrastructure.Migrations
                     b.HasOne("FinancialDetector.Domain.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.HasOne("FinancialDetector.Domain.Entities.User", "User")
