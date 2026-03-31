@@ -52,17 +52,14 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// 4. MÝMARÝ KAYITLAR (Dependency Injection - DI Katmaný)
+// 4. MÝMARÝ KAYITLAR (Dependency Injection)
 builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
 builder.Services.AddScoped<ITransactionAnalyzerService, TransactionAnalyzerService>();
-
-// ÇÖZÜLEN KISIM: AuthController'ýn ihtiyaç duyduðu Token Üretici motor buraya eklendi.
-// Kýdemli Notu: Eðer 'JwtTokenGenerator' kelimesinin altý kýrmýzý çizilirse, üzerine týklayýp 
-// 'Ctrl + .' yaparak ilgili namespace'i (using...) yukarýya otomatik dahil et.
 builder.Services.AddScoped<IJwtTokenGenerator, FinancialDetector.Infrastructure.Services.JwtTokenGenerator>();
 
-// 5. JWT Kimlik Doðrulama Ayarlarý
-var jwtKey = builder.Configuration["Jwt:Key"] ?? "GelistirmeOrtamiIcinGeciciGizliAnahtar123!!";
+// 5. JWT Kimlik Doðrulama Ayarlarý (DÜZELTÝLEN KISIM)
+// Sistem artýk senin appsettings.json dosyanla birebir uyumlu olarak "JwtSettings:SecretKey" yoluna bakýyor.
+var jwtKey = builder.Configuration["JwtSettings:SecretKey"] ?? "GelistirmeOrtamiIcinGeciciGizliAnahtar123!!";
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -73,8 +70,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
+            ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
+            ValidAudience = builder.Configuration["JwtSettings:Audience"],
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
     });
@@ -84,7 +81,7 @@ builder.Services.AddAuthorization();
 var app = builder.Build();
 
 // ======================================================================
-// OTOMASYON KATMANI: Yönlendirme Kurallarý
+// OTOMASYON KATMANI
 // ======================================================================
 app.MapGet("/", () => Results.Redirect("/swagger"));
 app.MapGet("/index.html", () => Results.Redirect("/swagger"));
@@ -99,14 +96,10 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// Global Hata Yönetimi
 app.UseMiddleware<ExceptionMiddleware>();
-
 app.UseHttpsRedirection();
-
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
 
 app.Run();
