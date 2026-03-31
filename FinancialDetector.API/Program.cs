@@ -57,8 +57,22 @@ builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
 builder.Services.AddScoped<ITransactionAnalyzerService, TransactionAnalyzerService>();
 builder.Services.AddScoped<IJwtTokenGenerator, FinancialDetector.Infrastructure.Services.JwtTokenGenerator>();
 
-// 5. JWT Kimlik Doðrulama Ayarlarý (DÜZELTÝLEN KISIM)
-// Sistem artýk senin appsettings.json dosyanla birebir uyumlu olarak "JwtSettings:SecretKey" yoluna bakýyor.
+// ======================================================================
+// 5. YENÝ EKLENEN KISIM: CORS Güvenlik Politikasý (Front-end Ýletiþimi)
+// ======================================================================
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("FrontendIntegrationPolicy", policy =>
+    {
+        // Geliþtireceðimiz Front-end projelerinin standart portlarýna (3000, 5173 vb.) izin veriyoruz.
+        policy.WithOrigins("http://localhost:3000", "http://localhost:5173")
+              .AllowAnyHeader()  // Her türlü veri baþlýðýna izin ver
+              .AllowAnyMethod()  // GET, POST, PUT, DELETE metotlarýna izin ver
+              .AllowCredentials(); // Token ve yetkilendirme geçiþlerine izin ver
+    });
+});
+
+// 6. JWT Kimlik Doðrulama Ayarlarý
 var jwtKey = builder.Configuration["JwtSettings:SecretKey"] ?? "GelistirmeOrtamiIcinGeciciGizliAnahtar123!!";
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -87,7 +101,7 @@ app.MapGet("/", () => Results.Redirect("/swagger"));
 app.MapGet("/index.html", () => Results.Redirect("/swagger"));
 
 // ======================================================================
-// MIDDLEWARE AKIÞI
+// MIDDLEWARE AKIÞI (Sýralama Mimaride Hayatidir)
 // ======================================================================
 
 if (app.Environment.IsDevelopment())
@@ -98,8 +112,13 @@ if (app.Environment.IsDevelopment())
 
 app.UseMiddleware<ExceptionMiddleware>();
 app.UseHttpsRedirection();
+
+// KRÝTÝK BÖLGE: CORS kuralý, mutlaka yetkilendirmeden (Auth) ÖNCE çalýþmalýdýr.
+app.UseCors("FrontendIntegrationPolicy");
+
 app.UseAuthentication();
 app.UseAuthorization();
+
 app.MapControllers();
 
 app.Run();
