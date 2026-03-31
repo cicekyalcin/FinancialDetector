@@ -15,6 +15,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
+// Repository Pattern Entegrasyonu
+builder.Services.AddScoped<ITransactionRepository, FinancialDetector.Infrastructure.Repositories.TransactionRepository>();
 
 // GÜVENLÝK: CORS Politikasý (Sadece belirlediðimiz Frontend'lerin API'ye eriþmesine izin verir)
 builder.Services.AddCors(options =>

@@ -5,14 +5,11 @@ using System.Security.Claims;
 using System.Threading.Tasks;
 using FinancialDetector.Domain.Entities;
 using FinancialDetector.Domain.Interfaces;
-using FinancialDetector.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace FinancialDetector.API.Controllers
 {
-    // 1. DTO: Veri yükleme işlemleri için nesnemiz
     public class TransactionUploadDto
     {
         public DateTime TransactionDate { get; set; }
@@ -21,7 +18,6 @@ namespace FinancialDetector.API.Controllers
         public string Currency { get; set; }
     }
 
-    // 2. YENİ DTO: Arama, Filtreleme ve Sayfalama kriterlerini tutan kurumsal nesnemiz
     public class TransactionFilterDto
     {
         public int PageNumber { get; set; } = 1;
@@ -37,80 +33,49 @@ namespace FinancialDetector.API.Controllers
     [Route("api/[controller]")]
     public class TransactionsController : ControllerBase
     {
-        private readonly AppDbContext _context;
+        // MİMARİ DÜZELTME: Veritabanı yerine, soyutlanmış Repository arayüzü kullanılıyor.
+        private readonly ITransactionRepository _transactionRepository;
         private readonly ITransactionAnalyzerService _analyzerService;
 
-        public TransactionsController(AppDbContext context, ITransactionAnalyzerService analyzerService)
+        public TransactionsController(ITransactionRepository transactionRepository, ITransactionAnalyzerService analyzerService)
         {
-            _context = context;
+            _transactionRepository = transactionRepository;
             _analyzerService = analyzerService;
         }
 
         [HttpGet]
         public async Task<IActionResult> GetTransactions([FromQuery] TransactionFilterDto filter)
         {
-            // GÜVENLİK ADIMI 1: Kimlik Doğrulama
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
             {
                 return Unauthorized("Geçersiz oturum. Lütfen tekrar giriş yapın.");
             }
 
-            // GÜVENLİK ADIMI 2: Veri İzolasyonu. Sorguyu SADECE bu kullanıcıya ait verilerle başlat.
-            var query = _context.Transactions.Where(t => t.UserId == userId).AsQueryable();
+            // Karmaşık SQL sorguları yok. İşi sadece Repository'ye devrediyoruz.
+            var result = await _transactionRepository.GetTransactionsAsync(
+                userId, filter.PageNumber, filter.PageSize, filter.StartDate, filter.EndDate, filter.Month, filter.MerchantName);
 
-            // MİMARİ ADIM: Dinamik Filtreleme İnşası (Deferred Execution)
-            if (filter.StartDate.HasValue)
+            var totalPages = (int)Math.Ceiling(result.TotalCount / (double)filter.PageSize);
+
+            // API sadece veriyi formatlayıp dışarı sunar.
+            var responseData = result.Data.Select(t => new
             {
-                query = query.Where(t => t.TransactionDate >= filter.StartDate.Value);
-            }
-
-            if (filter.EndDate.HasValue)
-            {
-                query = query.Where(t => t.TransactionDate <= filter.EndDate.Value);
-            }
-
-            if (filter.Month.HasValue && filter.Month.Value >= 1 && filter.Month.Value <= 12)
-            {
-                // Belirli bir aydaki (Örn: Sadece Mart) harcamaları getir.
-                query = query.Where(t => t.TransactionDate.Month == filter.Month.Value);
-            }
-
-            if (!string.IsNullOrWhiteSpace(filter.MerchantName))
-            {
-                // Kurum adına göre arama (Büyük/küçük harf duyarsız arama için veritabanındaki normalize alanı kullanıyoruz)
-                query = query.Where(t => t.NormalizedMerchantName.Contains(filter.MerchantName.ToUpper()));
-            }
-
-            // Sıralama (En yeniden en eskiye)
-            query = query.OrderByDescending(t => t.TransactionDate);
-
-            // Sayfalama Matematiği
-            var totalRecords = await query.CountAsync();
-            var totalPages = (int)Math.Ceiling(totalRecords / (double)filter.PageSize);
-
-            // VERİTABANINA VURMA ANI (SQL Server sadece bu satırda çalışır ve filtrelenmiş paket veriyi getirir)
-            var transactions = await query
-                .Skip((filter.PageNumber - 1) * filter.PageSize)
-                .Take(filter.PageSize)
-                .Select(t => new
-                {
-                    t.Id,
-                    t.TransactionDate,
-                    t.RawMerchantName,
-                    t.NormalizedMerchantName,
-                    t.Amount,
-                    t.Currency
-                })
-                .ToListAsync();
+                t.Id,
+                t.TransactionDate,
+                t.RawMerchantName,
+                t.NormalizedMerchantName,
+                t.Amount,
+                t.Currency
+            });
 
             return Ok(new
             {
-                TotalRecords = totalRecords,
+                TotalRecords = result.TotalCount,
                 TotalPages = totalPages,
                 CurrentPage = filter.PageNumber,
                 PageSize = filter.PageSize,
-                Data = transactions
+                Data = responseData
             });
         }
 
@@ -128,7 +93,7 @@ namespace FinancialDetector.API.Controllers
                 return Unauthorized("Geçersiz oturum. Lütfen tekrar giriş yapın.");
             }
 
-            var userExists = await _context.Users.AnyAsync(u => u.Id == userId);
+            var userExists = await _transactionRepository.UserExistsAsync(userId);
             if (!userExists)
             {
                 return Unauthorized("Token onaylandı ancak bu kimliğe sahip bir kullanıcı SQL veritabanında yok! Lütfen önce /api/Auth/register ile yeniden kayıt olun.");
@@ -145,8 +110,7 @@ namespace FinancialDetector.API.Controllers
                 NormalizedMerchantName = dto.MerchantName.ToUpper()
             }).ToList();
 
-            await _context.Transactions.AddRangeAsync(newTransactions);
-            await _context.SaveChangesAsync();
+            await _transactionRepository.AddTransactionsAsync(newTransactions);
 
             return Ok(new { Message = $"{newTransactions.Count} işlem başarıyla veritabanına kaydedildi." });
         }
