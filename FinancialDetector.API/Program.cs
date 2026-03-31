@@ -52,10 +52,14 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// 4. Mimari Kayýtlar (Dependency Injection)
+// 4. MÝMARÝ KAYITLAR (Dependency Injection - DI Katmaný)
 builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
-// Not: Somut sýnýfýn adýnýn 'TransactionAnalyzerService' olduðunu varsayýyorum.
 builder.Services.AddScoped<ITransactionAnalyzerService, TransactionAnalyzerService>();
+
+// ÇÖZÜLEN KISIM: AuthController'ýn ihtiyaç duyduðu Token Üretici motor buraya eklendi.
+// Kýdemli Notu: Eðer 'JwtTokenGenerator' kelimesinin altý kýrmýzý çizilirse, üzerine týklayýp 
+// 'Ctrl + .' yaparak ilgili namespace'i (using...) yukarýya otomatik dahil et.
+builder.Services.AddScoped<IJwtTokenGenerator, FinancialDetector.Infrastructure.Services.JwtTokenGenerator>();
 
 // 5. JWT Kimlik Doðrulama Ayarlarý
 var jwtKey = builder.Configuration["Jwt:Key"] ?? "GelistirmeOrtamiIcinGeciciGizliAnahtar123!!";
@@ -82,11 +86,7 @@ var app = builder.Build();
 // ======================================================================
 // OTOMASYON KATMANI: Yönlendirme Kurallarý
 // ======================================================================
-
-// Eðer tarayýcý ana dizine (/) gelirse otomatik olarak /swagger'a yolla
 app.MapGet("/", () => Results.Redirect("/swagger"));
-
-// Eðer tarayýcý senin inatçý index.html adresine gelirse yine /swagger'a yolla
 app.MapGet("/index.html", () => Results.Redirect("/swagger"));
 
 // ======================================================================

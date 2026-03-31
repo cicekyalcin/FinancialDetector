@@ -33,7 +33,6 @@ namespace FinancialDetector.API.Controllers
     [Route("api/[controller]")]
     public class TransactionsController : ControllerBase
     {
-        // MİMARİ DÜZELTME: Veritabanı yerine, soyutlanmış Repository arayüzü kullanılıyor.
         private readonly ITransactionRepository _transactionRepository;
         private readonly ITransactionAnalyzerService _analyzerService;
 
@@ -49,55 +48,50 @@ namespace FinancialDetector.API.Controllers
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
             {
-                return Unauthorized("Geçersiz oturum. Lütfen tekrar giriş yapın.");
+                return Unauthorized("Geçersiz oturum.");
             }
 
-            // Karmaşık SQL sorguları yok. İşi sadece Repository'ye devrediyoruz.
             var result = await _transactionRepository.GetTransactionsAsync(
                 userId, filter.PageNumber, filter.PageSize, filter.StartDate, filter.EndDate, filter.Month, filter.MerchantName);
 
             var totalPages = (int)Math.Ceiling(result.TotalCount / (double)filter.PageSize);
-
-            // API sadece veriyi formatlayıp dışarı sunar.
-            var responseData = result.Data.Select(t => new
-            {
-                t.Id,
-                t.TransactionDate,
-                t.RawMerchantName,
-                t.NormalizedMerchantName,
-                t.Amount,
-                t.Currency
-            });
 
             return Ok(new
             {
                 TotalRecords = result.TotalCount,
                 TotalPages = totalPages,
                 CurrentPage = filter.PageNumber,
-                PageSize = filter.PageSize,
-                Data = responseData
+                Data = result.Data
+            });
+        }
+
+        // DÜZELTİLEN METOT: LINQ (Count/Select) işlemleri kaldırıldı.
+        [HttpGet("dashboard-stats")]
+        public async Task<IActionResult> GetDashboardStats()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
+            {
+                return Unauthorized("Geçersiz oturum.");
+            }
+
+            var stats = await _transactionRepository.GetDashboardStatsAsync(userId);
+            var leaks = await _analyzerService.AnalyzeUserTransactions(userId);
+
+            return Ok(new
+            {
+                Overview = stats,
+                Leaks = leaks // Sızıntı verisini olduğu gibi Front-end'e paslıyoruz.
             });
         }
 
         [HttpPost("upload")]
         public async Task<IActionResult> UploadTransactions([FromBody] List<TransactionUploadDto> uploadData)
         {
-            if (uploadData == null || !uploadData.Any())
-            {
-                return BadRequest("Yüklenecek işlem bulunamadı.");
-            }
+            if (uploadData == null || !uploadData.Any()) return BadRequest("Veri yok.");
 
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
-            {
-                return Unauthorized("Geçersiz oturum. Lütfen tekrar giriş yapın.");
-            }
-
-            var userExists = await _transactionRepository.UserExistsAsync(userId);
-            if (!userExists)
-            {
-                return Unauthorized("Token onaylandı ancak bu kimliğe sahip bir kullanıcı SQL veritabanında yok! Lütfen önce /api/Auth/register ile yeniden kayıt olun.");
-            }
+            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId)) return Unauthorized();
 
             var newTransactions = uploadData.Select(dto => new Transaction
             {
@@ -111,21 +105,16 @@ namespace FinancialDetector.API.Controllers
             }).ToList();
 
             await _transactionRepository.AddTransactionsAsync(newTransactions);
-
-            return Ok(new { Message = $"{newTransactions.Count} işlem başarıyla veritabanına kaydedildi." });
+            return Ok(new { Message = "Yüklendi." });
         }
 
         [HttpGet("leaks")]
         public async Task<IActionResult> GetLeaks()
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
-            {
-                return Unauthorized("Geçersiz oturum. Lütfen tekrar giriş yapın.");
-            }
+            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId)) return Unauthorized();
 
             var result = await _analyzerService.AnalyzeUserTransactions(userId);
-
             return Ok(result);
         }
     }
