@@ -32,27 +32,30 @@ namespace FinancialDetector.Infrastructure.Services
                 var list = group.ToList();
                 if (list.Count >= 2)
                 {
+                    // Sızıntı Mantığı Güncellendi: 
+                    // Sadece son ikisini değil; son işlemi, o markaya ait İLK orijinal kayıtla (baz fiyat) kıyaslıyoruz.
+                    var first = list[0];
                     var last = list[^1];
-                    var previous = list[^2];
 
-                    if (last.Amount > previous.Amount)
+                    // Eğer güncel fiyat, kullanıcının o markaya ödediği ilk fiyattan 1 kuruş bile yüksekse alarm ver.
+                    if (last.Amount > first.Amount)
                     {
                         // GÜVENLİK: Kesin ondalıklı hesaplama için 100 yerine 100m kullanıldı.
-                        decimal increase = ((last.Amount - previous.Amount) / previous.Amount) * 100m;
+                        decimal increase = ((last.Amount - first.Amount) / first.Amount) * 100m;
 
                         leaks.Add(new
                         {
                             Merchant = group.Key,
                             Status = "Sızıntı Tespit Edildi",
-                            IncreaseRate = $"%{increase:F2}",
+                            IncreaseRate = $"{increase:F2}",
                             LastAmount = last.Amount,
-                            PreviousAmount = previous.Amount
+                            PreviousAmount = first.Amount
                         });
                     }
                 }
             }
 
-            return leaks.Any() ? leaks : new { Message = "Sızıntı bulunamadı." };
+            return leaks;
         }
     }
 }
