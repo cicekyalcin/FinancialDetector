@@ -12,6 +12,7 @@ namespace FinancialDetector.Domain.Entities
         public string NormalizedMerchantName { get; set; }
         public decimal Amount { get; set; }
         public string Currency { get; set; }
+       
         public bool IsProcessedForSubscription { get; set; }
 
         public User User { get; set; }
