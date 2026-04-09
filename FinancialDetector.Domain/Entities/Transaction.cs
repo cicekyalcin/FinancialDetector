@@ -15,6 +15,6 @@ namespace FinancialDetector.Domain.Entities
        
         public bool IsProcessedForSubscription { get; set; }
 
-        public User User { get; set; }
+        public User ? User { get; set; }
     }
 }
