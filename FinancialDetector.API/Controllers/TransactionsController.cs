@@ -50,23 +50,38 @@ namespace FinancialDetector.API.Controllers
             if (string.IsNullOrEmpty(userIdStr)) return Unauthorized("Kullanıcı kimliği bulunamadı.");
 
             var userId = Guid.Parse(userIdStr);
+            int addedCount = 0;
 
             foreach (var tx in transactions)
             {
-                tx.Id = Guid.NewGuid();
-                tx.UserId = userId;
+                // ZIRH 1: Manuel eklemelerde aynı harcama zaten varsa atla!
+                bool alreadyExists = _context.Transactions.Any(t =>
+                    t.UserId == userId &&
+                    t.TransactionDate.Date == tx.TransactionDate.Date &&
+                    t.Amount == tx.Amount &&
+                    t.RawMerchantName == tx.RawMerchantName);
 
-                // Manuel eklemelerde Normalized kolonunu otomatik doldurur
-                if (string.IsNullOrEmpty(tx.NormalizedMerchantName) && !string.IsNullOrEmpty(tx.RawMerchantName))
+                if (!alreadyExists)
                 {
-                    tx.NormalizedMerchantName = tx.RawMerchantName.Trim().ToUpperInvariant();
-                }
+                    tx.Id = Guid.NewGuid();
+                    tx.UserId = userId;
 
-                _context.Transactions.Add(tx);
+                    if (string.IsNullOrEmpty(tx.NormalizedMerchantName) && !string.IsNullOrEmpty(tx.RawMerchantName))
+                    {
+                        tx.NormalizedMerchantName = tx.RawMerchantName.Trim().ToUpperInvariant();
+                    }
+
+                    _context.Transactions.Add(tx);
+                    addedCount++;
+                }
             }
 
-            await _context.SaveChangesAsync();
-            return Ok(new { Message = "İşlemler başarıyla kaydedildi." });
+            if (addedCount > 0)
+            {
+                await _context.SaveChangesAsync();
+            }
+
+            return Ok(new { Message = $"{addedCount} yeni işlem eklendi. (Mevcut olanlar korundu)" });
         }
 
         [HttpGet("leaks")]
@@ -92,6 +107,7 @@ namespace FinancialDetector.API.Controllers
 
             var userId = Guid.Parse(userIdStr);
             var parsedTransactions = new List<Transaction>();
+            int skippedCount = 0;
 
             try
             {
@@ -113,17 +129,32 @@ namespace FinancialDetector.API.Controllers
 
                             if (isDateParsed && isAmountParsed)
                             {
-                                parsedTransactions.Add(new Transaction
+                                string rawName = values[1].Trim();
+
+                                // ZIRH 2: CSV Yüklemelerinde aynı harcama zaten varsa atla!
+                                bool alreadyExists = _context.Transactions.Any(t =>
+                                    t.UserId == userId &&
+                                    t.TransactionDate.Date == txDate.Date &&
+                                    t.Amount == amount &&
+                                    t.RawMerchantName == rawName);
+
+                                if (!alreadyExists)
                                 {
-                                    Id = Guid.NewGuid(),
-                                    UserId = userId,
-                                    TransactionDate = txDate,
-                                    RawMerchantName = values[1].Trim(),
-                                    // İşte SQL'in istediği o meşhur kolon! Artık kızmayacak.
-                                    NormalizedMerchantName = values[1].Trim().ToUpperInvariant(),
-                                    Amount = amount,
-                                    Currency = "TRY"
-                                });
+                                    parsedTransactions.Add(new Transaction
+                                    {
+                                        Id = Guid.NewGuid(),
+                                        UserId = userId,
+                                        TransactionDate = txDate,
+                                        RawMerchantName = rawName,
+                                        NormalizedMerchantName = rawName.ToUpperInvariant(),
+                                        Amount = amount,
+                                        Currency = "TRY"
+                                    });
+                                }
+                                else
+                                {
+                                    skippedCount++;
+                                }
                             }
                         }
                     }
@@ -133,16 +164,32 @@ namespace FinancialDetector.API.Controllers
                 {
                     _context.Transactions.AddRange(parsedTransactions);
                     await _context.SaveChangesAsync();
-                    return Ok(new { Message = $"{parsedTransactions.Count} adet harcama başarıyla sisteme aktarıldı!" });
+                    return Ok(new { Message = $"{parsedTransactions.Count} yeni harcama eklendi! ({skippedCount} mükerrer kayıt çöpe atıldı.)" });
                 }
 
-                return BadRequest("CSV dosyasından hiçbir geçerli veri okunamadı. Sütun formatlarınızı kontrol edin.");
+                return Ok(new { Message = $"Yeni veri bulunamadı. ({skippedCount} mükerrer kayıt çöpe atıldı.)" });
             }
             catch (Exception ex)
             {
                 string realError = ex.InnerException != null ? ex.InnerException.Message : ex.Message;
                 return StatusCode(500, $"Veritabanı Kayıt Hatası: {realError}");
             }
+        }
+
+        // ÇÖPLÜĞÜ TEMİZLEMEK İÇİN YENİ SİLAHIN
+        [HttpDelete("reset-data")]
+        public async Task<IActionResult> ResetData()
+        {
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdStr)) return Unauthorized();
+
+            var userId = Guid.Parse(userIdStr);
+
+            var userTransactions = _context.Transactions.Where(t => t.UserId == userId).ToList();
+            _context.Transactions.RemoveRange(userTransactions);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { Message = "Sistemdeki tüm test harcamaların temizlendi. Temiz bir sayfa açıldı." });
         }
     }
 }
